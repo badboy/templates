@@ -1,0 +1,56 @@
+# .circleci/config.yml
+version: 2.1
+
+jobs:
+  # via https://circleci.com/blog/deploying-documentation-to-github-pages-with-continuous-integration/
+  Generate documentation:
+    docker:
+      - image: circleci/rust:latest
+    steps:
+      - checkout
+      - run:
+          name: Version information
+          command: rustc --version; cargo --version; rustup --version
+      - run:
+          name: Install mdbook
+          command: cargo install -f mdbook
+      - run:
+          name: Build documentation
+          command: mdbook build
+      - persist_to_workspace:
+          root: ./
+          paths: book
+
+  docs-deploy:
+    docker:
+      - image: node:8.10.0
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ./
+      # Needed for write access to the GitHub repository;
+      # see https://circleci.com/docs/2.0/gh-bb-integration/#deployment-keys-and-user-keys
+      - add_ssh_keys:
+          fingerprints:
+            - "<ADD NEW SSH KEY, TAKE FINGERPRINT FROM CIRCLECI>"
+      # The gh-pages npm package can be used to push a directory to a git branch;
+      # see https://www.npmjs.com/package/gh-pages
+      - run:
+          name: Deploy docs to gh-pages branch
+          command: |
+            git config user.email "deploy@user"
+            git config user.name "CircleCI docs-deploy job"
+            npm install -g --silent gh-pages@2.0.1
+            gh-pages --dotfiles --message "[skip ci] Updates" --dist book
+
+workflows:
+  version: 2
+  documentation:
+    jobs:
+      - Generate documentation
+      - docs-deploy:
+          requires:
+            - Generate documentation
+          filters:
+            branches:
+              only: master
